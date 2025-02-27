@@ -1,10 +1,10 @@
-# Mosque Audio Analysis
+# Speech Audio Analysis
 
-A self-hosted voice recognition system for analyzing mosque audio content, built on OpenAI's Whisper model with a lightweight message queue.
+A self-hosted voice recognition system for analyzing speech audio content, built on OpenAI's Whisper model with a lightweight message queue.
 
 ## Overview
 
-Mosque Audio Analysis is a containerized service that enables:
+Speech Audio Analysis is a containerized service that enables:
 
 - Speech-to-text transcription of audio recordings
 - Keyword detection in audio files
@@ -42,8 +42,8 @@ The system consists of:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/mosque-audio-analysis.git
-   cd mosque-audio-analysis
+   git clone https://github.com/ksd-mx/speech-audio-analysis.git
+   cd speech-audio-analysis
    ```
 
 2. Start the services:
@@ -67,7 +67,7 @@ python client.py transcribe path/to/recording.mp3
 #### Detecting Keywords
 
 ```bash
-python client.py detect path/to/recording.mp3 "adhan,salat,allahu akbar"
+python client.py detect path/to/recording.mp3 "apples, popcorn, ball"
 ```
 
 #### Subscribing to Results
