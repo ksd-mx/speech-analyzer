@@ -4,14 +4,15 @@ import uuid
 import torch
 import whisper
 import json
-import redis
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from tempfile import NamedTemporaryFile
 import logging
 import shutil
+
+# Import our new queue manager
+from queue_manager import QueueManager
 
 # Configure logging
 logging.basicConfig(
@@ -41,8 +42,6 @@ app.add_middleware(
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/tmp/whisper_uploads")
 CACHE_MODELS = os.environ.get("CACHE_MODELS", "true").lower() == "true"
-REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
-REDIS_ENABLED = os.environ.get("REDIS_ENABLED", "true").lower() == "true"
 
 # Create upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -50,16 +49,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Model cache
 model_cache = {}
 
-# Initialize Redis connection if enabled
-redis_client = None
-if REDIS_ENABLED:
-    try:
-        redis_client = redis.from_url(REDIS_URL)
-        redis_client.ping()  # Test connection
-        logger.info(f"Connected to Redis at {REDIS_URL}")
-    except Exception as e:
-        logger.error(f"Redis connection error: {str(e)}")
-        redis_client = None
+# Initialize Queue Manager
+queue_manager = QueueManager()
 
 # Pydantic models for API
 class TranscriptionResponse(BaseModel):
@@ -196,27 +187,9 @@ def detect_keywords_in_text(text: str, keywords: List[str]):
     
     return results
 
-def publish_to_queue(topic, data):
-    """Publish message to Redis queue/topic"""
-    if redis_client is None:
-        logger.warning("Cannot publish to queue: Redis not connected")
-        return False
-    
-    try:
-        message = json.dumps(data)
-        redis_client.publish(topic, message)
-        logger.info(f"Published message to topic '{topic}'")
-        
-        # Also store in a Redis list for persistence
-        list_key = f"history:{topic}"
-        redis_client.lpush(list_key, message)
-        # Trim the list to keep only last 100 messages
-        redis_client.ltrim(list_key, 0, 99)
-        
-        return True
-    except Exception as e:
-        logger.error(f"Failed to publish to queue: {str(e)}")
-        return False
+def publish_to_queue(topic: str, data: Dict[str, Any]) -> bool:
+    """Publish message to queue using the queue manager"""
+    return queue_manager.publish(topic, data)
 
 # API endpoints
 @app.get("/health", response_model=HealthResponse)
@@ -231,9 +204,8 @@ async def health_check():
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
     }
     
-    # Add queue status if Redis is enabled
-    if REDIS_ENABLED:
-        response["queue_status"] = "connected" if redis_client is not None else "disconnected"
+    # Add queue status
+    response["queue_status"] = queue_manager.status
     
     return response
 
@@ -273,29 +245,27 @@ async def transcribe_audio(
             "job_id": job_id
         }
         
-        # If Redis is enabled, publish to queue
-        if REDIS_ENABLED:
-            queue_data = {
-                **response,
-                "filename": file.filename,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            publish_to_queue(topic, queue_data)
+        # Publish to queue
+        queue_data = {
+            **response,
+            "filename": file.filename,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        publish_to_queue(topic, queue_data)
         
         return response
     
     except Exception as e:
         logger.error(f"Transcription error: {str(e)}")
         
-        # If Redis is enabled, publish error to queue
-        if REDIS_ENABLED:
-            error_data = {
-                "success": False,
-                "error": str(e),
-                "job_id": job_id,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            publish_to_queue(topic, error_data)
+        # Publish error to queue
+        error_data = {
+            "success": False,
+            "error": str(e),
+            "job_id": job_id,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        publish_to_queue(topic, error_data)
         
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
@@ -346,32 +316,31 @@ async def detect_keywords(
             "job_id": job_id
         }
         
-        # If Redis is enabled, publish to queue
-        if REDIS_ENABLED:
-            queue_data = {
-                **response,
-                "filename": file.filename,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            publish_to_queue(topic, queue_data)
+        # Publish to queue
+        queue_data = {
+            **response,
+            "filename": file.filename,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        publish_to_queue(topic, queue_data)
         
         return response
     
     except Exception as e:
         logger.error(f"Keyword detection error: {str(e)}")
         
-        # If Redis is enabled, publish error to queue
-        if REDIS_ENABLED:
-            error_data = {
-                "success": False,
-                "error": str(e),
-                "job_id": job_id,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            publish_to_queue(topic, error_data)
+        # Publish error to queue
+        error_data = {
+            "success": False,
+            "error": str(e),
+            "job_id": job_id,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        publish_to_queue(topic, error_data)
         
         raise HTTPException(status_code=500, detail=f"Keyword detection failed: {str(e)}")
 
+# Application entry point
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

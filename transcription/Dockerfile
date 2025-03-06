@@ -17,7 +17,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app.py .
+COPY app.py queue_strategy.py queue_manager.py ./
 
 # Create upload directory
 RUN mkdir -p /tmp/whisper_uploads
@@ -26,6 +26,8 @@ RUN mkdir -p /tmp/whisper_uploads
 ENV WHISPER_MODEL=small
 ENV UPLOAD_DIR=/tmp/whisper_uploads
 ENV CACHE_MODELS=true
+ENV QUEUE_TYPE=mqtt
+ENV QUEUE_ENABLED=true
 
 # Expose port
 EXPOSE 8000

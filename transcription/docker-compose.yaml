@@ -9,17 +9,35 @@ services:
     volumes:
       - whisper-data:/tmp/whisper_uploads
       - ./app.py:/app/app.py
+      - ./queue_strategy.py:/app/queue_strategy.py
+      - ./queue_manager.py:/app/queue_manager.py
     environment:
+      # Whisper configuration
       - WHISPER_MODEL=small
       - CACHE_MODELS=true
+      - UPLOAD_DIR=/tmp/whisper_uploads
+      
+      # Queue configuration
+      - QUEUE_TYPE=mqtt # Options: redis, mqtt, logging
+      - QUEUE_ENABLED=true
+      
+      # Redis settings (used when QUEUE_TYPE=redis)
       - REDIS_URL=redis://redis:6379/0
-      - REDIS_ENABLED=true
+      
+      # MQTT settings (used when QUEUE_TYPE=mqtt)
+      - MQTT_BROKER_URL=mosquitto  # Point to the MQTT broker service
+      - MQTT_PORT=1883
+      - MQTT_USERNAME=
+      - MQTT_PASSWORD=
+      - MQTT_QOS=0
+      - MQTT_RETAIN=false
     restart: unless-stopped
     # Memory limits
     mem_limit: 8g
     mem_reservation: 2g
     depends_on:
       - redis
+      - mosquitto
 
   redis:
     image: redis:alpine
@@ -30,6 +48,19 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
 
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # WebSockets
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
 volumes:
   whisper-data:
   redis-data:
+  mosquitto-data:
+  mosquitto-log:

@@ -9,3 +9,4 @@ torchvision
 torchaudio
 pydantic
 redis
+paho-mqtt
