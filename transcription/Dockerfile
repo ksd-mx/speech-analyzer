@@ -23,7 +23,7 @@ COPY app.py .
 RUN mkdir -p /tmp/whisper_uploads
 
 # Environment variables
-ENV WHISPER_MODEL=base
+ENV WHISPER_MODEL=small
 ENV UPLOAD_DIR=/tmp/whisper_uploads
 ENV CACHE_MODELS=true
 
