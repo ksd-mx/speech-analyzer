@@ -67,3 +67,15 @@ whisper_models/
 
 # Documentation
 generated-docs/
+
+# Training data
+training-data/
+
+# Model files
+*.pkl
+*.joblib
+*.pickle
+*.h5
+*.keras
+*.hdf5
+*.h5
