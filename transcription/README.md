@@ -53,6 +53,10 @@ The system consists of:
 
 2. Start the services:
    ```bash
+   # Using run.sh helper script (recommended)
+   ./run.sh up
+   
+   # Or using Docker Compose directly
    docker-compose up -d
    ```
 
@@ -71,6 +75,50 @@ The system consists of:
      Queue Status: connected
      Connected to: http://localhost:8000
    ```
+
+### Using the run.sh Helper Script
+
+The included `run.sh` script provides a platform-aware way to run Docker Compose commands. It automatically:
+
+- Detects your operating system and adjusts commands accordingly
+- Determines if sudo is required to run Docker
+- Detects and configures proxy settings when needed
+- Handles common Docker Compose operations with sensible defaults
+
+#### Basic Usage
+
+```bash
+# Make the script executable first (one-time)
+chmod +x run.sh
+
+# Start services (equivalent to 'docker compose up -d')
+./run.sh
+
+# Or specify a command
+./run.sh up       # Start services in detached mode
+./run.sh down     # Stop and remove services
+./run.sh build    # Build or rebuild services
+./run.sh ps       # List running services
+./run.sh logs     # View service logs
+```
+
+#### Advanced Usage
+
+```bash
+# Follow logs with timestamps
+./run.sh logs -f --timestamps
+
+# Stop services and remove volumes
+./run.sh down -v
+
+# Rebuild specific service
+./run.sh build whisper-api
+
+# View help for all options
+./run.sh --help
+```
+
+The script automatically applies any necessary proxy settings and works across different environments, making deployment more consistent regardless of where you're running the application.
 
 ## Usage
 
@@ -411,7 +459,7 @@ The system supports various audio formats including:
 ### Common Issues
 
 1. **API Connection Failure**:
-   - Check if the Docker containers are running: `docker-compose ps`
+   - Check if the Docker containers are running: `docker-compose ps` or `./run.sh ps`
    - Verify the API port is accessible: `curl http://localhost:8000/health`
 
 2. **Out of Memory Errors**:
@@ -423,9 +471,14 @@ The system supports various audio formats including:
    - Check system resource usage during processing
 
 4. **Queue Connection Issues**:
-   - For MQTT: Verify the MQTT broker is running: `docker-compose logs mosquitto`
-   - For Redis: Verify Redis is running: `docker-compose logs redis`
+   - For MQTT: Verify the MQTT broker is running: `./run.sh logs mosquitto`
+   - For Redis: Verify Redis is running: `./run.sh logs redis`
    - Check connection parameters in environment variables
+
+5. **Deployment Script Issues**:
+   - If `run.sh` fails, try running Docker Compose commands directly
+   - Check if the script has execution permissions: `chmod +x run.sh`
+   - For proxy issues, try setting environment variables manually: `export http_proxy=YOUR_PROXY_URL`
 
 ## License
 
