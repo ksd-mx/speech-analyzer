@@ -1,9 +1,14 @@
 services:
   whisper-api:
-    platform: linux/arm64  # Specifically for Apple Silicon
+    # Removed platform-specific constraint to allow auto-detection
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - http_proxy=${http_proxy:-}
+        - https_proxy=${https_proxy:-}
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
     ports:
       - "8000:8000"
     volumes:
@@ -12,18 +17,20 @@ services:
       - ./queue_strategy.py:/app/queue_strategy.py
       - ./queue_manager.py:/app/queue_manager.py
     environment:
+      # Proxy settings
+      - http_proxy=${http_proxy:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
       # Whisper configuration
       - WHISPER_MODEL=small
       - CACHE_MODELS=true
       - UPLOAD_DIR=/tmp/whisper_uploads
-      
       # Queue configuration
       - QUEUE_TYPE=mqtt # Options: redis, mqtt, logging
       - QUEUE_ENABLED=true
-      
       # Redis settings (used when QUEUE_TYPE=redis)
       - REDIS_URL=redis://redis:6379/0
-      
       # MQTT settings (used when QUEUE_TYPE=mqtt)
       - MQTT_BROKER_URL=mosquitto  # Point to the MQTT broker service
       - MQTT_PORT=1883

@@ -1,5 +1,23 @@
 FROM python:3.9-bullseye
 
+# Add build arguments for proxy settings
+ARG http_proxy
+ARG https_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+
+# Set environment variables if provided
+ENV http_proxy=${http_proxy}
+ENV https_proxy=${https_proxy}
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+
+# Configure apt to use proxy if provided
+RUN if [ ! -z "${http_proxy}" ]; then \
+    echo "Acquire::http::Proxy \"${http_proxy}\";" > /etc/apt/apt.conf.d/proxy.conf && \
+    echo "Acquire::https::Proxy \"${https_proxy}\";" >> /etc/apt/apt.conf.d/proxy.conf; \
+    fi
+
 WORKDIR /app
 
 # Install system dependencies including FFmpeg and audio libraries
