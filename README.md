@@ -1,439 +1,327 @@
-# Speech Audio Analysis
+# Audio Keyword Detection System
 
-A self-hosted voice recognition system for analyzing speech audio content, built on OpenAI's Whisper model with flexible message queuing for asynchronous processing.
+A powerful, flexible system for detecting keywords in audio recordings using multiple detection strategies. This system can identify specific keywords in audio files, providing information about occurrences, positions, and confidence levels.
 
-## Overview
-
-Speech Audio Analysis is a containerized service that provides:
-
-- High-quality speech-to-text transcription of audio recordings
-- Keyword detection in audio files with occurrence counts and positions
-- Flexible message queuing for asynchronous result processing (MQTT, Redis, or Logging)
-- Easy deployment using Docker with support for Apple Silicon
-
-The system exposes a RESTful API and leverages message queuing through MQTT or Redis, making it suitable for both real-time analysis and batch processing workflows.
+![Banner](https://via.placeholder.com/1200x300/4A90E2/FFFFFF?text=Audio+Keyword+Detection+System)
 
 ## Features
 
-- **Transcription Service**: Convert speech to text with language detection
-- **Keyword Detection**: Search audio for specific phrases with occurrence counts
-- **Flexible Message Queue**: Publish results to MQTT or Redis topics for asynchronous consumption
-- **Multiple Model Support**: Choose from different Whisper model sizes based on accuracy needs
-- **Hardware Acceleration**: Support for MPS (Metal Performance Shaders) on Apple Silicon
-- **Containerized**: Easy deployment with Docker and Docker Compose
-- **Client Tools**: Python clients for making requests and subscribing to results
+- **Multiple Detection Strategies**: 
+  - **Whisper-based detection**: Utilizes OpenAI's Whisper model for speech-to-text transcription
+  - **ML Classifier-based detection**: Direct audio fingerprinting for keyword identification
+  
+- **Unified API**: Single interface for all detection methods
 
-## Architecture
+- **Flexible Deployment**: Run as a standalone CLI tool or as a REST API service
 
-The system consists of:
+- **Distributed Architecture**: Queue-based result distribution using MQTT or Redis
 
-1. **API Server**: FastAPI application that processes audio files
-2. **Message Queue**: MQTT broker (default) or Redis for distributing results
-3. **Client Tools**: 
-   - `client.py`: Command-line tool for sending requests to the API
-   - `mqtt_subscriber.py`: Tool for subscribing to and viewing results from MQTT
-   - `subscriber.py`: Tool for subscribing to and viewing results from Redis (if using Redis)
-4. **Queue Strategy Pattern**: Flexible implementation that allows switching between message queue backends
+- **Detailed Analytics**: Information about keyword occurrences, positions, and confidence levels
 
-## Getting Started
+- **Built for Scale**: Docker ready with optimized resource usage
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [Training Models](#training-models)
+  - [Command Line Interface](#command-line-interface)
+  - [API Usage](#api-usage)
+  - [Docker Deployment](#docker-deployment)
+- [Architecture](#architecture)
+- [Reference](#reference)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Installation
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- Audio files for analysis (MP3, WAV, etc.)
-- Python 3.9+ (for client tools)
+- Python 3.9 or later
+- FFmpeg (for audio processing)
+- Redis (optional, for Redis queue strategy)
+- MQTT broker (optional, for MQTT queue strategy)
 
-### Installation
+### Setup
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/speech-audio-analysis.git
-   cd speech-audio-analysis
-   ```
+1. **Clone the repository**
 
-2. Start the services:
-   ```bash
-   docker-compose up -d
-   ```
+```bash
+git clone https://github.com/yourusername/audio-detection-system.git
+cd audio-detection-system
+```
 
-3. Verify the installation:
-   ```bash
-   python client.py health
-   ```
-   
-   You should see output like:
-   ```
-   API Health Check:
-     Status: ok
-     Model: small
-     Device: cpu
-     Timestamp: 2025-03-06 14:30:45
-     Queue Status: connected
-     Connected to: http://localhost:8000
-   ```
+2. **Create and activate a virtual environment**
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows, use: .venv\Scripts\activate
+```
+
+3. **Install dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+## Quick Start
+
+Here's how to quickly get started with the audio keyword detection system:
+
+### Train a Model
+
+```bash
+# Train a classifier model using a directory of audio samples
+python -m cli.train training_data --model models/keyword_model.pkl
+```
+
+### Detect Keywords
+
+```bash
+# Using classifier strategy
+python -m cli.detect path/to/audio.wav --keywords "hello,world" --strategy classifier --model models/keyword_model.pkl
+
+# Using Whisper strategy
+python -m cli.detect path/to/audio.wav --keywords "hello,world" --strategy whisper
+```
+
+### Start the API Server
+
+```bash
+uvicorn api.app:app --host 0.0.0.0 --port 8000
+```
+
+### Use the API
+
+```bash
+curl -X POST http://localhost:8000/keywords/detect \
+  -F "file=@path/to/audio.wav" \
+  -F "strategy=whisper" \
+  -F "keywords=hello,world"
+```
 
 ## Usage
 
-### Using the Client Script
+### Training Models
 
-#### Transcribing Audio
+The system can be trained to recognize specific keywords using a directory structure where each subdirectory represents a keyword class:
+
+```
+training_data/
+├── keyword1/
+│   ├── sample1.wav
+│   ├── sample2.wav
+│   └── ...
+├── keyword2/
+│   ├── sample1.wav
+│   ├── sample2.wav
+│   └── ...
+└── negative/
+    ├── sample1.wav
+    ├── sample2.wav
+    └── ...
+```
+
+Train a model with:
 
 ```bash
-python client.py transcribe path/to/recording.mp3
+python -m cli.train training_data --model models/my_model.pkl
 ```
 
-Example output:
-```
-Transcribing file: path/to/recording.mp3
-Using API at: http://localhost:8000
+This extracts features from audio samples and trains a random forest classifier.
 
-Transcription Result:
-  Language: en
-  Duration: 65.21 seconds
-  Processing Time: 12.45 seconds
+### Command Line Interface
 
-Text:
-Welcome to the annual conference on climate science. Today we'll be discussing the latest research findings on global temperature trends. I'm pleased to introduce our keynote speaker, Dr. Sarah Johnson, who will present her groundbreaking work on atmospheric carbon measurements.
-```
-
-#### Detecting Keywords
+#### Detect Keywords in Audio Files
 
 ```bash
-python client.py detect path/to/recording.mp3 "climate,research,temperature"
+# Basic usage
+python -m cli.detect audio_file.wav --keywords "word1,word2" --strategy whisper
+
+# With classifier strategy and a trained model
+python -m cli.detect audio_file.wav --keywords "word1,word2" --strategy classifier --model models/my_model.pkl
+
+# Adjust confidence threshold
+python -m cli.detect audio_file.wav --keywords "word1,word2" --threshold 0.7
 ```
 
-Example output:
-```
-Detecting keywords in file: path/to/recording.mp3
-Keywords to detect: climate,research,temperature
-Using API at: http://localhost:8000
-
-Keyword Detection Result:
-  Duration: 65.21 seconds
-  Processing Time: 13.12 seconds
-
-Detected Keywords:
-  ✓ 'climate' - 2 occurrences
-  ✓ 'research' - 1 occurrences
-  ✓ 'temperature' - 1 occurrences
-
-Full Transcription:
-Welcome to the annual conference on climate science. Today we'll be discussing the latest research findings on global temperature trends. I'm pleased to introduce our keynote speaker, Dr. Sarah Johnson, who will present her groundbreaking work on atmospheric carbon measurements.
-```
-
-### Subscribing to Results
-
-To receive real-time notifications when jobs are processed (using MQTT, which is the default):
+#### Client Tool for API Interaction
 
 ```bash
-python mqtt_subscriber.py transcriptions
+# Check API health
+python -m cli.client health
+
+# List available detection strategies
+python -m cli.client strategies
+
+# Detect keywords using the API
+python -m cli.client detect audio_file.wav "word1,word2" --strategy whisper
+
+# Subscribe to detection results
+python -m cli.client subscribe keyword_detections
 ```
 
-Example output:
-```
-Subscribing to topic: transcriptions
-Waiting for messages... (Ctrl+C to quit)
-Connected to MQTT broker at localhost:1883
+### API Usage
 
-==== New Message ====
-Topic: transcriptions
-Job ID: 3f7b8c1d-a2e4-4d5f-9e6b-7c8d9e0f1a2b
-
-Transcription Result:
-Language: en
-Duration: 65.21 seconds
-Processing Time: 12.45 seconds
-
-Text:
-Welcome to the annual conference on climate science. Today we'll be discussing the latest research findings...
-=====================
-```
-
-If using Redis instead (set `QUEUE_TYPE=redis` in environment):
+#### Start the API Server
 
 ```bash
-python subscriber.py subscribe transcriptions
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
-#### Viewing Result History (Redis only)
+#### API Endpoints
+
+- `GET /health`: Health check endpoint
+- `GET /keywords/strategies`: List available detection strategies
+- `POST /keywords/detect`: Detect keywords in an audio file
+
+#### Example API Request
 
 ```bash
-python subscriber.py history transcriptions
+curl -X POST http://localhost:8000/keywords/detect \
+  -F "file=@audio_file.wav" \
+  -F "strategy=whisper" \
+  -F "keywords=word1,word2" \
+  -F "threshold=0.6" \
+  -F "topic=my_custom_topic"
 ```
 
-Example output:
-```
-Recent messages for topic 'transcriptions':
+#### Example API Response
 
---- Message 1 ---
-Job ID: 3f7b8c1d-a2e4-4d5f-9e6b-7c8d9e0f1a2b
-Timestamp: 2025-03-06 15:30:45
-Language: en
-Text: Welcome to the annual conference on climate science. Today we'll be discussing the latest research findings...
-
---- Message 2 ---
-Job ID: 9e0f1a2b-3f7b-8c1d-a2e4-4d5f9e6b7c8d
-Timestamp: 2025-03-06 14:20:30
-Language: fr
-Text: Bienvenue à notre conférence sur les nouvelles technologies d'intelligence artificielle...
-```
-
-### Using the API Directly
-
-The API can be called directly using standard HTTP requests:
-
-#### Health Check
-
-```bash
-curl http://localhost:8000/health
-```
-
-Example response:
-```json
-{
-  "status": "ok",
-  "model": "small",
-  "device": "cpu",
-  "timestamp": "2025-03-06 14:30:45",
-  "queue_status": "connected"
-}
-```
-
-#### Transcribe Audio
-
-```bash
-curl -X POST http://localhost:8000/transcribe \
-  -F "file=@path/to/recording.mp3" \
-  -F "model=small" \
-  -F "topic=transcriptions"
-```
-
-Example response:
 ```json
 {
   "success": true,
-  "text": "Welcome to the annual conference on climate science. Today we'll be discussing the latest research findings...",
-  "language": "en",
-  "duration_seconds": 65.21,
-  "processing_time_seconds": 12.45,
-  "job_id": "3f7b8c1d-a2e4-4d5f-9e6b-7c8d9e0f1a2b"
-}
-```
-
-#### Detect Keywords
-
-```bash
-curl -X POST http://localhost:8000/detect-keywords \
-  -F "file=@path/to/recording.mp3" \
-  -F "keywords=climate,research,temperature" \
-  -F "model=small" \
-  -F "topic=keyword_detections"
-```
-
-Example response:
-```json
-{
-  "success": true,
-  "transcription": "Welcome to the annual conference on climate science. Today we'll be discussing the latest research findings on global temperature trends...",
-  "detected_keywords": {
-    "climate": {
-      "detected": true,
-      "occurrences": 2,
-      "positions": [29, 115]
-    },
-    "research": {
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "strategy": "whisper",
+  "transcription": "This is an example transcription with word1 and word2 in it.",
+  "detections": [
+    {
+      "keyword": "word1",
       "detected": true,
       "occurrences": 1,
-      "positions": [67]
+      "positions": [27],
+      "confidence_scores": [0.95]
     },
-    "temperature": {
+    {
+      "keyword": "word2",
       "detected": true,
-      "occurrences": 1,
-      "positions": [88]
+      "occurrences": 1, 
+      "positions": [37],
+      "confidence_scores": [0.92]
     }
-  },
-  "duration_seconds": 65.21,
-  "processing_time_seconds": 13.12,
-  "job_id": "9e0f1a2b-3f7b-8c1d-a2e4-4d5f9e6b7c8d"
+  ],
+  "duration_seconds": 3.45,
+  "processing_time_seconds": 1.23
 }
 ```
 
-## Configuration
+### Docker Deployment
 
-### Environment Variables
+The system is Docker-ready and can be deployed using Docker Compose:
+
+```bash
+# Start all services
+cd docker
+docker-compose up -d
+
+# Or use the provided script
+./scripts/run.sh
+```
+
+The Docker setup includes:
+- The Audio Detection API service
+- Redis for queue management (optional)
+- Mosquitto MQTT broker for message distribution (optional)
+
+## Architecture
+
+The system is built using the strategy pattern to provide a unified interface for different detection approaches:
+
+```
+                 +---------------------+
+                 |  DetectorFactory    |
+                 +---------------------+
+                 | create_detector()   |
+                 +----------+----------+
+                            |
+                            v
+              +-------------+-------------+
+              |   AudioKeywordDetector   |
+              +-------------------------+
+              | detect_keywords()       |
+              +-------------+-----------+
+                            |
+                            |
+          +----------------+-----------------+
+          |                                  |
++---------v-----------+          +-----------v---------+
+| WhisperDetector     |          | ClassifierDetector  |
++---------------------+          +---------------------+
+| detect_keywords()   |          | detect_keywords()   |
++---------------------+          +---------------------+
+```
+
+### Directory Structure
+
+```
+audio-detection-system/
+├── api/                    # FastAPI application
+├── cli/                    # Command-line interface
+├── config/                 # Configuration management
+├── core/                   # Core detection logic
+│   └── detection/          # Detection strategies
+├── docker/                 # Docker configuration
+├── models/                 # Trained model storage
+├── queueing/               # Queue management
+├── scripts/                # Utility scripts
+└── tests/                  # Unit and integration tests
+```
+
+## Reference
+
+### Detection Strategies
+
+#### Whisper Strategy
+
+Uses OpenAI's Whisper model to transcribe audio and then perform text search for keywords. Advantages:
+- High accuracy for transcription
+- Can detect keywords in context
+- Works with any vocabulary
+
+#### Classifier Strategy
+
+Uses a trained machine learning model to detect keywords directly from audio features. Advantages:
+- Faster processing
+- Works offline
+- Better for short, specific keywords
+- Lower resource usage
+
+### Configuration Options
+
+Configuration can be set using environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| WHISPER_MODEL | Whisper model size (tiny, base, small, medium, large) | small |
-| CACHE_MODELS | Enable model caching | true |
-| UPLOAD_DIR | Directory to store uploaded files | /tmp/whisper_uploads |
-| WHISPER_API_URL | API URL for client tools | http://localhost:8000 |
-| QUEUE_TYPE | Message queue type (mqtt, redis, logging) | mqtt |
-| QUEUE_ENABLED | Enable message queue | true |
-| MQTT_BROKER_URL | MQTT broker hostname | mosquitto |
-| MQTT_PORT | MQTT broker port | 1883 |
-| MQTT_USERNAME | MQTT username | |
-| MQTT_PASSWORD | MQTT password | |
-| MQTT_QOS | MQTT quality of service | 0 |
-| MQTT_RETAIN | MQTT retain messages | false |
-| REDIS_URL | Redis connection string | redis://redis:6379/0 |
+| `API_HOST` | API host | 0.0.0.0 |
+| `API_PORT` | API port | 8000 |
+| `WHISPER_MODEL` | Whisper model size | base |
+| `QUEUE_TYPE` | Queue strategy (mqtt, redis, logging) | mqtt |
+| `MQTT_BROKER_URL` | MQTT broker URL | localhost |
+| `REDIS_URL` | Redis URL | redis://redis:6379/0 |
 
-### Docker Configuration
+See `config/settings.py` for a complete list of options.
 
-The `docker-compose.yaml` file can be modified to:
-- Change resource limits
-- Change exposed ports
-- Adjust message queue configuration
-- Switch to different Whisper models
+## Contributing
 
-Example configuration in docker-compose.yaml:
-```yaml
-services:
-  whisper-api:
-    platform: linux/arm64  # Specifically for Apple Silicon
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    volumes:
-      - whisper-data:/tmp/whisper_uploads
-      - ./app.py:/app/app.py
-      - ./queue_strategy.py:/app/queue_strategy.py
-      - ./queue_manager.py:/app/queue_manager.py
-    environment:
-      # Whisper configuration
-      - WHISPER_MODEL=small
-      - CACHE_MODELS=true
-      - UPLOAD_DIR=/tmp/whisper_uploads
-      
-      # Queue configuration
-      - QUEUE_TYPE=mqtt # Options: redis, mqtt, logging
-      - QUEUE_ENABLED=true
-      
-      # MQTT settings
-      - MQTT_BROKER_URL=mosquitto
-      - MQTT_PORT=1883
-    mem_limit: 8g          # Increase for larger models
-    mem_reservation: 2g
-    depends_on:
-      - redis
-      - mosquitto
-```
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-## API Endpoints
-
-| Endpoint | Method | Description | Parameters |
-|----------|--------|-------------|------------|
-| /health | GET | Check service health | None |
-| /transcribe | POST | Transcribe audio file | file (required), model (optional), topic (optional) |
-| /detect-keywords | POST | Detect keywords in audio file | file (required), keywords (required, comma-separated), model (optional), topic (optional) |
-
-## Message Format
-
-### Transcription Result
-
-```json
-{
-  "success": true,
-  "text": "Transcribed text content...",
-  "language": "en",
-  "duration_seconds": 65.21,
-  "processing_time_seconds": 12.45,
-  "job_id": "3f7b8c1d-a2e4-4d5f-9e6b-7c8d9e0f1a2b",
-  "filename": "recording.mp3",
-  "timestamp": "2025-03-06 15:30:45"
-}
-```
-
-### Keyword Detection Result
-
-```json
-{
-  "success": true,
-  "transcription": "Transcribed text content...",
-  "detected_keywords": {
-    "keyword1": {
-      "detected": true,
-      "occurrences": 3,
-      "positions": [12, 45, 78]
-    },
-    "keyword2": {
-      "detected": false,
-      "occurrences": 0,
-      "positions": []
-    }
-  },
-  "duration_seconds": 65.21,
-  "processing_time_seconds": 13.12,
-  "job_id": "9e0f1a2b-3f7b-8c1d-a2e4-4d5f9e6b7c8d",
-  "filename": "recording.mp3",
-  "timestamp": "2025-03-06 15:45:30"
-}
-```
-
-## Architecture Details
-
-### Queue Strategy Pattern
-
-The system implements a Strategy Pattern for message queuing, allowing easy switching between different queue implementations:
-
-- **MQTT**: Default and preferred for pub/sub messaging
-- **Redis**: Alternative with support for message history
-- **Logging**: Fallback option for development/debugging
-
-The queue implementation can be changed by setting the `QUEUE_TYPE` environment variable.
-
-## Performance Considerations
-
-- The system's performance depends on the Whisper model size and available hardware
-- Model size trade-offs:
-  - **tiny**: Fastest but least accurate
-  - **base**: Good balance for short clips
-  - **small**: Recommended default for most use cases
-  - **medium**: Higher accuracy but slower
-  - **large**: Highest accuracy but significantly slower
-- Processing times increase with audio length and model size
-- For batch processing of numerous files, consider configuring a higher memory limit
-- MPS acceleration on Apple Silicon improves performance significantly
-
-## Supported Audio Formats
-
-The system supports various audio formats including:
-- MP3
-- WAV
-- M4A
-- FLAC
-- OGG
-
-## Troubleshooting
-
-### Common Issues
-
-1. **API Connection Failure**:
-   - Check if the Docker containers are running: `docker-compose ps`
-   - Verify the API port is accessible: `curl http://localhost:8000/health`
-
-2. **Out of Memory Errors**:
-   - Increase the memory limit in `docker-compose.yaml`
-   - Use a smaller Whisper model
-
-3. **Slow Processing**:
-   - Consider using a smaller model for faster results
-   - Check system resource usage during processing
-
-4. **Queue Connection Issues**:
-   - For MQTT: Verify the MQTT broker is running: `docker-compose logs mosquitto`
-   - For Redis: Verify Redis is running: `docker-compose logs redis`
-   - Check connection parameters in environment variables
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- [OpenAI Whisper](https://github.com/openai/whisper) for the speech recognition model
-- [FastAPI](https://fastapi.tiangolo.com/) for the API framework
-- [MQTT](https://mqtt.org/) and [Eclipse Mosquitto](https://mosquitto.org/) for the primary message queue
-- [Redis](https://redis.io/) for the alternative message queue

@@ -1,0 +1,26 @@
+# API dependencies
+fastapi
+uvicorn
+python-multipart
+pydantic
+httpx
+
+# Audio processing
+openai-whisper
+librosa
+numpy
+soundfile
+PyAudio
+
+# ML dependencies
+scikit-learn
+joblib
+
+# Queue strategies
+redis
+paho-mqtt
+
+# Utils
+requests
+python-dotenv
+tqdm
