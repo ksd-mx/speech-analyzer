@@ -2,8 +2,6 @@
 
 A powerful, flexible system for detecting keywords in audio recordings using multiple detection strategies. This system can identify specific keywords in audio files, providing information about occurrences, positions, and confidence levels.
 
-![Banner](https://via.placeholder.com/1200x300/4A90E2/FFFFFF?text=Audio+Keyword+Detection+System)
-
 ## Features
 
 - **Multiple Detection Strategies**: 
