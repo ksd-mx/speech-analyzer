@@ -219,11 +219,7 @@ curl -X POST http://localhost:8000/keywords/detect \
 The system is Docker-ready and can be deployed using Docker Compose:
 
 ```bash
-# Start all services
-cd docker
-docker-compose up -d
-
-# Or use the provided script
+# Start all services using the provided script
 ./scripts/run.sh
 ```
 
@@ -238,25 +234,25 @@ The system is built using the strategy pattern to provide a unified interface fo
 
 ```
                  +---------------------+
-                 |  DetectorFactory    |
+                 |   DetectorFactory   |
                  +---------------------+
-                 | create_detector()   |
+                 |   create_detector() |
                  +----------+----------+
                             |
                             v
-              +-------------+-------------+
-              |   AudioKeywordDetector   |
+              +-------------+-----------+
+              |   AudioKeywordDetector  |
               +-------------------------+
-              | detect_keywords()       |
+              |     detect_keywords()   |
               +-------------+-----------+
                             |
                             |
           +----------------+-----------------+
           |                                  |
 +---------v-----------+          +-----------v---------+
-| WhisperDetector     |          | ClassifierDetector  |
+|   WhisperDetector   |          |  ClassifierDetector |
 +---------------------+          +---------------------+
-| detect_keywords()   |          | detect_keywords()   |
+|  detect_keywords()  |          |  detect_keywords()  |
 +---------------------+          +---------------------+
 ```
 
