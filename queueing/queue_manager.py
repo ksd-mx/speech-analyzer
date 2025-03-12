@@ -1,11 +1,11 @@
 """
-Queue Manager for handling message publishing using different strategies.
+Queue Manager for handling message publishing and subscription using different strategies.
 Provides a centralized interface for the application to interact with message queues.
 """
 import os
 import time
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Callable
 
 from queueing.queue_strategy import QueueStrategy, QueueStrategyFactory
 
@@ -24,6 +24,7 @@ class QueueManager:
         """
         self.config = config or self._load_config_from_env()
         self.strategy: Optional[QueueStrategy] = None
+        self.subscribers = {}  # Map of topic -> list of callbacks
         self.initialize()
     
     def _load_config_from_env(self) -> Dict[str, Any]:
@@ -123,8 +124,77 @@ class QueueManager:
         
         return self.strategy.publish(topic, data)
     
+    def subscribe(self, topic: str, callback: Callable[[str, Dict[str, Any]], None]) -> bool:
+        """Subscribe to a topic using the configured strategy.
+        
+        Args:
+            topic (str): The topic/channel to subscribe to.
+            callback (Callable): Function to call when a message is received.
+                The callback should accept topic and message as arguments.
+            
+        Returns:
+            bool: True if subscription was successful, False otherwise.
+        """
+        if not self.config.get("enabled", True):
+            logger.debug(f"Queue disabled, not subscribing to {topic}")
+            return False
+        
+        if self.strategy is None or not self.strategy.is_connected:
+            if not self.initialize():
+                logger.warning("Queue not initialized, cannot subscribe to topic")
+                return False
+        
+        # Add to subscribers dictionary for tracking
+        if topic not in self.subscribers:
+            self.subscribers[topic] = []
+        
+        if callback not in self.subscribers[topic]:
+            self.subscribers[topic].append(callback)
+        
+        # Use the strategy's subscribe method
+        return self.strategy.subscribe(topic, callback)
+    
+    def unsubscribe(self, topic: str, callback: Optional[Callable] = None) -> bool:
+        """Unsubscribe from a topic using the configured strategy.
+        
+        Args:
+            topic (str): The topic/channel to unsubscribe from.
+            callback (Callable, optional): Specific callback to remove. 
+                If None, all callbacks for this topic are removed.
+            
+        Returns:
+            bool: True if unsubscription was successful, False otherwise.
+        """
+        if self.strategy is None or not self.strategy.is_connected:
+            return False
+        
+        success = True
+        
+        # If a specific callback is provided, only remove that one
+        if callback is not None and topic in self.subscribers:
+            if callback in self.subscribers[topic]:
+                self.subscribers[topic].remove(callback)
+                
+            # If there are no more callbacks for this topic, unsubscribe completely
+            if not self.subscribers[topic]:
+                success = self.strategy.unsubscribe(topic)
+                if success:
+                    del self.subscribers[topic]
+        else:
+            # Unsubscribe from the topic completely
+            success = self.strategy.unsubscribe(topic)
+            if success and topic in self.subscribers:
+                del self.subscribers[topic]
+        
+        return success
+    
     def close(self) -> None:
-        """Close the queue connection."""
+        """Close the queue connection and clean up subscriptions."""
+        # Unsubscribe from all topics
+        for topic in list(self.subscribers.keys()):
+            self.unsubscribe(topic)
+        
+        # Close the strategy
         if self.strategy is not None:
             self.strategy.close()
             self.strategy = None

@@ -9,6 +9,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 from ..schemas.models import (
     KeywordDetectionRequest, 
@@ -119,16 +120,19 @@ async def detect_keywords(
             "duration_seconds": duration_seconds,
             "processing_time_seconds": processing_time
         }
+
+        # Convert to JSON-serializable format
+        serializable_response = jsonable_encoder(response)
         
         # Publish to queue
         queue_data = {
-            **response,
+            **serializable_response,
             "filename": file.filename,
             "timestamp": time.time()
         }
         queue_manager.publish(topic, queue_data)
         
-        return response
+        return serializable_response
         
     except Exception as e:
         logger.error(f"Keyword detection error: {str(e)}")

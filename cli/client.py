@@ -10,7 +10,10 @@ import requests
 import json
 import time
 import uuid
+import signal
 from typing import List, Dict, Any, Optional
+
+from queueing.queue_subscriber import QueueSubscriber
 
 # Get API URL from environment variable or use default
 API_URL = os.environ.get("AUDIO_DETECTION_API_URL", "http://localhost:8000")
@@ -153,19 +156,74 @@ def detect_keywords(file_path: str, keywords: str, strategy: str = "whisper",
         print(f"Error: {str(e)}")
         return False
 
-def subscribe_to_topic(topic: str) -> bool:
+def subscribe_to_topic(topic: str, queue_type: Optional[str] = None) -> bool:
     """
     Subscribe to a queue topic for detection results.
     
     Args:
         topic: Topic to subscribe to
+        queue_type: Queue type to use (redis, mqtt, or logging)
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        print("TODO: Implement subscribe to topic")
+        # Configure the subscriber
+        config = {}
+        if queue_type:
+            config["queue_type"] = queue_type
         
+        # Create the subscriber
+        subscriber = QueueSubscriber(config)
+        
+        # Define a custom callback for received messages
+        def message_callback(topic, message):
+            timestamp = message.get('timestamp', 'Unknown time')
+            job_id = message.get('job_id', 'Unknown job')
+            
+            print(f"\n[{timestamp}] Received message on topic '{topic}':")
+            print(f"  Job ID: {job_id}")
+            
+            if not message.get('success', False):
+                print(f"  Status: Failed - {message.get('error', 'Unknown error')}")
+                return
+            
+            print(f"  Status: Success")
+            print(f"  Strategy: {message.get('strategy', 'unknown')}")
+            print(f"  File: {message.get('filename', 'unknown')}")
+            print(f"  Duration: {message.get('duration_seconds', 0):.2f} seconds")
+            print(f"  Processing Time: {message.get('processing_time_seconds', 0):.2f} seconds")
+            
+            if 'detections' in message:
+                print("\n  Detected Keywords:")
+                for detection in message['detections']:
+                    keyword = detection['keyword']
+                    if detection['detected']:
+                        print(f"    ✓ '{keyword}' - {detection['occurrences']} occurrences")
+                    else:
+                        print(f"    ✗ '{keyword}' - not found")
+            
+            sys.stdout.flush()  # Ensure output is displayed immediately
+        
+        # Subscribe to the topic
+        print(f"Subscribing to topic: {topic}")
+        if queue_type:
+            print(f"Using queue type: {queue_type}")
+        
+        success = subscriber.subscribe(topic, message_callback)
+        if not success:
+            print(f"Failed to subscribe to topic: {topic}")
+            return False
+        
+        print("Subscription active. Waiting for messages...")
+        print("Press Ctrl+C to stop.")
+        
+        # Run the subscriber
+        subscriber.run_forever()
+        
+        return True
+    except KeyboardInterrupt:
+        print("\nSubscription stopped by user.")
         return True
     except Exception as e:
         print(f"Error: {str(e)}")
@@ -186,6 +244,7 @@ def print_usage():
     print("  client.py detect recording.mp3 \"hello,world\"")
     print("  client.py detect recording.mp3 \"hello,world\" --strategy classifier --model my_model.pkl")
     print("  client.py subscribe keyword_detections")
+    print("  client.py subscribe keyword_detections --queue-type redis")
     print("\nConfiguration:")
     print(f"  API URL: {API_URL} (set with AUDIO_DETECTION_API_URL environment variable)")
 
@@ -211,6 +270,8 @@ def main():
     # Subscribe command
     subscribe_parser = subparsers.add_parser("subscribe", help="Subscribe to detection results")
     subscribe_parser.add_argument("topic", default="keyword_detections", nargs="?", help="Topic to subscribe to")
+    subscribe_parser.add_argument("--queue-type", choices=["redis", "mqtt", "logging"], 
+                                help="Queue type to use (defaults to environment config)")
     
     args = parser.parse_args()
     
@@ -226,7 +287,7 @@ def main():
         ) else 1
     
     elif args.command == "subscribe":
-        return 0 if subscribe_to_topic(args.topic) else 1
+        return 0 if subscribe_to_topic(args.topic, args.queue_type) else 1
     
     else:
         print_usage()

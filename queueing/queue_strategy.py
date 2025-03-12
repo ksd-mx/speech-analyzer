@@ -5,7 +5,8 @@ Provides interfaces and concrete implementations for different queue services.
 import json
 import logging
 import abc
-from typing import Dict, Any, Optional
+import threading
+from typing import Dict, Any, Optional, Callable, List
 
 # Configure logging
 logging.basicConfig(
@@ -37,6 +38,32 @@ class QueueStrategy(abc.ABC):
             
         Returns:
             bool: True if publishing was successful, False otherwise.
+        """
+        pass
+    
+    @abc.abstractmethod
+    def subscribe(self, topic: str, callback: Callable[[str, Dict[str, Any]], None]) -> bool:
+        """Subscribe to a specific topic.
+        
+        Args:
+            topic (str): The topic/channel to subscribe to.
+            callback (Callable): Function to call when a message is received.
+                The callback should accept topic and message as arguments.
+            
+        Returns:
+            bool: True if subscription was successful, False otherwise.
+        """
+        pass
+    
+    @abc.abstractmethod
+    def unsubscribe(self, topic: str) -> bool:
+        """Unsubscribe from a specific topic.
+        
+        Args:
+            topic (str): The topic/channel to unsubscribe from.
+            
+        Returns:
+            bool: True if unsubscribe was successful, False otherwise.
         """
         pass
     
@@ -77,6 +104,9 @@ class RedisQueueStrategy(QueueStrategy):
         """
         self.redis_url = url
         self.redis_client = None
+        self.pubsub = None
+        self.subscription_threads = {}  # Keep track of subscription threads
+        self.callbacks = {}  # Map of topic -> callback
         self._status = "initialized"
     
     def connect(self) -> bool:
@@ -92,6 +122,7 @@ class RedisQueueStrategy(QueueStrategy):
             import redis
             self.redis_client = redis.from_url(self.redis_url)
             self.redis_client.ping()  # Test connection
+            self.pubsub = self.redis_client.pubsub()
             self._status = "connected"
             logger.info(f"Connected to Redis at {self.redis_url}")
             return True
@@ -130,8 +161,109 @@ class RedisQueueStrategy(QueueStrategy):
             logger.error(f"Failed to publish to Redis queue: {str(e)}")
             return False
     
+    def subscribe(self, topic: str, callback: Callable[[str, Dict[str, Any]], None]) -> bool:
+        """Subscribe to a Redis topic.
+        
+        Args:
+            topic (str): The Redis channel to subscribe to.
+            callback (Callable): Function to call when a message is received.
+            
+        Returns:
+            bool: True if subscription was successful, False otherwise.
+        """
+        if self.redis_client is None and not self.connect():
+            return False
+            
+        try:
+            # Store the callback
+            self.callbacks[topic] = callback
+            
+            # Subscribe to the topic
+            self.pubsub.subscribe(**{topic: self._message_handler})
+            
+            # Start a thread to listen for messages
+            if topic not in self.subscription_threads:
+                thread = threading.Thread(
+                    target=self._listen_for_messages,
+                    args=(topic,),
+                    daemon=True
+                )
+                thread.start()
+                self.subscription_threads[topic] = thread
+                
+            logger.info(f"Subscribed to Redis topic '{topic}'")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to subscribe to Redis topic '{topic}': {str(e)}")
+            return False
+    
+    def _message_handler(self, message):
+        """Handle incoming Redis messages."""
+        if message['type'] == 'message':
+            topic = message['channel'].decode('utf-8')
+            data = message['data'].decode('utf-8')
+            
+            if topic in self.callbacks:
+                try:
+                    # Parse the JSON data
+                    data_dict = json.loads(data)
+                    # Call the callback with topic and data
+                    self.callbacks[topic](topic, data_dict)
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse message from Redis topic '{topic}': {data}")
+                except Exception as e:
+                    logger.error(f"Error in Redis callback for topic '{topic}': {str(e)}")
+    
+    def _listen_for_messages(self, topic: str):
+        """Listen for messages on a specific topic."""
+        try:
+            logger.info(f"Starting Redis subscription listener for topic '{topic}'")
+            self.pubsub.run_in_thread(sleep_time=0.01)
+        except Exception as e:
+            logger.error(f"Redis subscription listener failed for topic '{topic}': {str(e)}")
+    
+    def unsubscribe(self, topic: str) -> bool:
+        """Unsubscribe from a Redis topic.
+        
+        Args:
+            topic (str): The Redis channel to unsubscribe from.
+            
+        Returns:
+            bool: True if unsubscribe was successful, False otherwise.
+        """
+        if self.pubsub is None:
+            return False
+            
+        try:
+            self.pubsub.unsubscribe(topic)
+            
+            # Remove the callback
+            if topic in self.callbacks:
+                del self.callbacks[topic]
+                
+            # Thread will terminate on its own
+            if topic in self.subscription_threads:
+                del self.subscription_threads[topic]
+                
+            logger.info(f"Unsubscribed from Redis topic '{topic}'")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to unsubscribe from Redis topic '{topic}': {str(e)}")
+            return False
+    
     def close(self) -> None:
         """Close the Redis connection."""
+        if self.pubsub is not None:
+            try:
+                # Unsubscribe from all topics
+                for topic in list(self.callbacks.keys()):
+                    self.unsubscribe(topic)
+                
+                self.pubsub.close()
+                self.pubsub = None
+            except Exception as e:
+                logger.error(f"Error closing Redis PubSub: {str(e)}")
+                
         if self.redis_client is not None:
             # Redis connections are automatically pooled, so there's no explicit
             # close method we need to call, but we'll reset our client reference
@@ -197,6 +329,8 @@ class MQTTQueueStrategy(QueueStrategy):
         self.client = None
         self._status = "initialized"
         self._connected = False
+        self.callbacks = {}  # Map of topic -> callback
+        self.subscribed_topics = set()  # Keep track of subscribed topics
     
     def connect(self) -> bool:
         """Establish connection to MQTT broker.
@@ -214,14 +348,39 @@ class MQTTQueueStrategy(QueueStrategy):
             def on_connect(client, userdata, flags, rc):
                 if rc == 0:
                     self._status = "connected"
+                    self._connected = True
                     logger.info(f"Connected to MQTT broker at {self.broker_url}:{self.port}")
+                    
+                    # Resubscribe to topics if any
+                    for topic in self.subscribed_topics:
+                        client.subscribe(topic, self.qos)
                 else:
                     self._status = f"error: connection failed (code {rc})"
                     logger.error(f"MQTT connection failed with code {rc}")
             
+            # Callback for message reception
+            def on_message(client, userdata, msg):
+                try:
+                    topic = msg.topic
+                    payload = msg.payload.decode('utf-8')
+                    
+                    if topic in self.callbacks:
+                        try:
+                            # Parse the JSON data
+                            data = json.loads(payload)
+                            # Call the callback
+                            self.callbacks[topic](topic, data)
+                        except json.JSONDecodeError:
+                            logger.error(f"Failed to parse message from MQTT topic '{topic}': {payload}")
+                        except Exception as e:
+                            logger.error(f"Error in MQTT callback for topic '{topic}': {str(e)}")
+                except Exception as e:
+                    logger.error(f"Error processing MQTT message: {str(e)}")
+            
             # Create client and set callbacks
             self.client = mqtt.Client(client_id=self.client_id)
             self.client.on_connect = on_connect
+            self.client.on_message = on_message
             
             # Set username and password if provided
             if self.username and self.password:
@@ -283,16 +442,83 @@ class MQTTQueueStrategy(QueueStrategy):
             logger.error(f"Failed to publish to MQTT queue: {str(e)}")
             return False
     
+    def subscribe(self, topic: str, callback: Callable[[str, Dict[str, Any]], None]) -> bool:
+        """Subscribe to an MQTT topic.
+        
+        Args:
+            topic (str): The MQTT topic to subscribe to.
+            callback (Callable): Function to call when a message is received.
+            
+        Returns:
+            bool: True if subscription was successful, False otherwise.
+        """
+        if not self.is_connected and not self.connect():
+            return False
+            
+        try:
+            # Store the callback
+            self.callbacks[topic] = callback
+            self.subscribed_topics.add(topic)
+            
+            # Subscribe to the topic
+            result, _ = self.client.subscribe(topic, self.qos)
+            
+            if result == 0:
+                logger.info(f"Subscribed to MQTT topic '{topic}'")
+                return True
+            else:
+                logger.error(f"Failed to subscribe to MQTT topic '{topic}' (code {result})")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to subscribe to MQTT topic '{topic}': {str(e)}")
+            return False
+    
+    def unsubscribe(self, topic: str) -> bool:
+        """Unsubscribe from an MQTT topic.
+        
+        Args:
+            topic (str): The MQTT topic to unsubscribe from.
+            
+        Returns:
+            bool: True if unsubscribe was successful, False otherwise.
+        """
+        if not self.is_connected:
+            return False
+            
+        try:
+            # Unsubscribe from the topic
+            result, _ = self.client.unsubscribe(topic)
+            
+            # Remove from our tracking
+            if topic in self.callbacks:
+                del self.callbacks[topic]
+            self.subscribed_topics.discard(topic)
+            
+            if result == 0:
+                logger.info(f"Unsubscribed from MQTT topic '{topic}'")
+                return True
+            else:
+                logger.error(f"Failed to unsubscribe from MQTT topic '{topic}' (code {result})")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to unsubscribe from MQTT topic '{topic}': {str(e)}")
+            return False
+    
     def close(self) -> None:
         """Disconnect and close the MQTT client."""
         if self.client is not None:
             try:
+                # Unsubscribe from all topics
+                for topic in list(self.callbacks.keys()):
+                    self.unsubscribe(topic)
+                
                 self.client.loop_stop()
                 self.client.disconnect()
             except:
                 pass  # Ignore errors during disconnection
             finally:
                 self.client = None
+                self._connected = False
                 self._status = "disconnected"
                 logger.info("MQTT connection closed")
     
@@ -303,7 +529,7 @@ class MQTTQueueStrategy(QueueStrategy):
         Returns:
             bool: True if connected, False otherwise.
         """
-        return self.client is not None and self._status == "connected"
+        return self.client is not None and self._connected
     
     @property
     def status(self) -> str:
@@ -328,6 +554,7 @@ class LoggingQueueStrategy(QueueStrategy):
         """
         self.log_level = log_level
         self._status = "connected"  # Always connected
+        self.callbacks = {}  # Map of topic -> callback
     
     def connect(self) -> bool:
         """No actual connection needed for logging.
@@ -351,8 +578,37 @@ class LoggingQueueStrategy(QueueStrategy):
         logger.info(f"[MOCK QUEUE] Would publish to topic '{topic}':\n{message}")
         return True
     
+    def subscribe(self, topic: str, callback: Callable[[str, Dict[str, Any]], None]) -> bool:
+        """Log the subscription that would be made.
+        
+        Args:
+            topic (str): The topic that would be subscribed to.
+            callback (Callable): Function that would be called for messages.
+            
+        Returns:
+            bool: Always returns True.
+        """
+        self.callbacks[topic] = callback
+        logger.info(f"[MOCK QUEUE] Would subscribe to topic '{topic}'")
+        return True
+    
+    def unsubscribe(self, topic: str) -> bool:
+        """Log the unsubscription that would be made.
+        
+        Args:
+            topic (str): The topic that would be unsubscribed from.
+            
+        Returns:
+            bool: Always returns True.
+        """
+        if topic in self.callbacks:
+            del self.callbacks[topic]
+        logger.info(f"[MOCK QUEUE] Would unsubscribe from topic '{topic}'")
+        return True
+    
     def close(self) -> None:
         """No actual connection to close for logging."""
+        self.callbacks.clear()
         pass
     
     @property
