@@ -4,9 +4,10 @@ A powerful, flexible system for detecting keywords in audio recordings using mul
 
 ## Features
 
-- **Multiple Detection Strategies**: 
+- **Unified Strategy Pattern Architecture**: 
   - **Whisper-based detection**: Utilizes OpenAI's Whisper model for speech-to-text transcription
   - **ML Classifier-based detection**: Direct audio fingerprinting for keyword identification
+  - **Extensible framework**: Easily add new detection strategies with the strategy pattern
   
 - **Unified API**: Single interface for all detection methods
 
@@ -158,6 +159,9 @@ python -m cli.client detect audio_file.wav "word1,word2" --strategy whisper
 
 # Subscribe to detection results
 python -m cli.client subscribe keyword_detections
+
+# Specify queue type for subscription
+python -m cli.client subscribe keyword_detections --queue-type mqtt
 ```
 
 ### API Usage
@@ -221,6 +225,11 @@ The system is Docker-ready and can be deployed using Docker Compose:
 ```bash
 # Start all services using the provided script
 ./scripts/run.sh
+
+# Other useful commands
+./scripts/run.sh up -d    # Start services in detached mode
+./scripts/run.sh down     # Stop services
+./scripts/run.sh logs -f  # Follow logs
 ```
 
 The Docker setup includes:
@@ -232,44 +241,67 @@ The Docker setup includes:
 
 The system is built using the strategy pattern to provide a unified interface for different detection approaches:
 
+```mermaid
+classDiagram
+    class DetectorFactory {
+        +create_detector()
+    }
+    
+    class BaseDetector {
+        <<abstract>>
+        +detect_keywords()
+        +get_supported_params()
+    }
+    
+    class WhisperDetector {
+        +detect_keywords()
+        +get_supported_params()
+    }
+    
+    class ClassifierDetector {
+        +detect_keywords()
+        +get_supported_params()
+    }
+    
+    DetectorFactory ..> BaseDetector : creates
+    BaseDetector <|-- WhisperDetector : implements
+    BaseDetector <|-- ClassifierDetector : implements
 ```
-                 +---------------------+
-                 |   DetectorFactory   |
-                 +---------------------+
-                 |   create_detector() |
-                 +----------+----------+
-                            |
-                            v
-              +-------------+-----------+
-              |   AudioKeywordDetector  |
-              +-------------------------+
-              |     detect_keywords()   |
-              +-------------+-----------+
-                            |
-                            |
-          +----------------+-----------------+
-          |                                  |
-+---------v-----------+          +-----------v---------+
-|   WhisperDetector   |          |  ClassifierDetector |
-+---------------------+          +---------------------+
-|  detect_keywords()  |          |  detect_keywords()  |
-+---------------------+          +---------------------+
+
+The strategy pattern allows for different detection implementations while maintaining a consistent interface, making it easy to:
+
+1. Add new detection strategies in the future
+2. Switch between strategies based on requirements
+3. Present a unified API to users regardless of the underlying implementation
+
+### Queue Integration
+
+Both detection strategies send results to a message queue using a configurable queue management system:
+
+```mermaid
+flowchart LR
+    Detector[Detector Strategy] --> Results[Detection Results]
+    Results --> QueueManager[Queue Manager]
+    QueueManager --> MQTT[MQTT Strategy]
+    QueueManager --> Redis[Redis Strategy]
+    QueueManager --> Logging[Logging Strategy]
 ```
 
 ### Directory Structure
 
 ```
 audio-detection-system/
-├── api/                    # FastAPI application
-├── cli/                    # Command-line interface
-├── config/                 # Configuration management
-├── core/                   # Core detection logic
-│   └── detection/          # Detection strategies
-├── docker/                 # Docker configuration
-├── models/                 # Trained model storage
-├── queueing/               # Queue management
-├── scripts/                # Utility scripts
-└── tests/                  # Unit and integration tests
+├── api/                  # FastAPI application & endpoints
+├── core/                 # Core detection logic
+│   └── detection/        # Strategy pattern implementations 
+├── queueing/             # Queue management system
+├── cli/                  # Command-line interface tools
+├── models/               # Trained model storage
+├── config/               # Configuration management
+├── docker/               # Docker configuration files
+├── tests/                # Unit and integration tests
+├── scripts/              # Utility scripts
+└── requirements.txt      # Project dependencies
 ```
 
 ## Reference
@@ -283,6 +315,8 @@ Uses OpenAI's Whisper model to transcribe audio and then perform text search for
 - Can detect keywords in context
 - Works with any vocabulary
 
+Implementation is provided in `core/detection/whisper.py`.
+
 #### Classifier Strategy
 
 Uses a trained machine learning model to detect keywords directly from audio features. Advantages:
@@ -290,6 +324,23 @@ Uses a trained machine learning model to detect keywords directly from audio fea
 - Works offline
 - Better for short, specific keywords
 - Lower resource usage
+
+Implementation is provided in `core/detection/classifier.py`.
+
+### Adding New Strategies
+
+To add a new detection strategy:
+1. Create a new class that extends `BaseDetector` (in `core/detection/base.py`)
+2. Implement the required methods: `detect_keywords()` and `get_supported_params()`
+3. Add the new strategy to the `DetectorFactory` in `core/detector_factory.py`
+
+### Queue Strategies
+
+The system supports multiple message queue strategies:
+
+- **MQTT**: Lightweight messaging protocol, good for IoT applications
+- **Redis**: In-memory data structure store, useful for high-throughput scenarios
+- **Logging**: Fallback strategy that logs messages without external dependencies
 
 ### Configuration Options
 
@@ -300,8 +351,11 @@ Configuration can be set using environment variables:
 | `API_HOST` | API host | 0.0.0.0 |
 | `API_PORT` | API port | 8000 |
 | `WHISPER_MODEL` | Whisper model size | base |
+| `DEFAULT_MODEL_DIR` | Classifier models directory | models |
+| `DEFAULT_THRESHOLD` | Default detection threshold | 0.5 |
 | `QUEUE_TYPE` | Queue strategy (mqtt, redis, logging) | mqtt |
 | `MQTT_BROKER_URL` | MQTT broker URL | localhost |
+| `MQTT_PORT` | MQTT broker port | 1883 |
 | `REDIS_URL` | Redis URL | redis://redis:6379/0 |
 
 See `config/settings.py` for a complete list of options.
