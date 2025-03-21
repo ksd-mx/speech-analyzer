@@ -17,6 +17,8 @@ A powerful, flexible system for detecting keywords in audio recordings using mul
 
 - **Detailed Analytics**: Information about keyword occurrences, positions, and confidence levels
 
+- **Custom Metadata Support**: Pass timestamps, framerates, output paths, and other custom metadata through the system
+
 - **Built for Scale**: Docker ready with optimized resource usage
 
 ## Table of Contents
@@ -79,10 +81,10 @@ python -m cli.train training_data --model models/keyword_model.pkl
 
 ```bash
 # Using classifier strategy
-python -m cli.detect path/to/audio.wav --keywords "hello,world" --strategy classifier --model models/keyword_model.pkl
+python -m cli.detect path/to/audio.wav --keywords "hello,world" --strategy classifier --model models/keyword_model.pkl --threshold 0.6
 
 # Using Whisper strategy
-python -m cli.detect path/to/audio.wav --keywords "hello,world" --strategy whisper
+python -m cli.detect path/to/audio.wav --keywords "hello,world" --strategy whisper --threshold 0.5
 ```
 
 ### Start the API Server
@@ -97,7 +99,8 @@ uvicorn api.app:app --host 0.0.0.0 --port 8000
 curl -X POST http://localhost:8000/keywords/detect \
   -F "file=@path/to/audio.wav" \
   -F "strategy=whisper" \
-  -F "keywords=hello,world"
+  -F "keywords=hello,world" \
+  -F "threshold=0.5"
 ```
 
 ## Usage
@@ -136,10 +139,10 @@ This extracts features from audio samples and trains a random forest classifier.
 
 ```bash
 # Basic usage
-python -m cli.detect audio_file.wav --keywords "word1,word2" --strategy whisper
+python -m cli.detect audio_file.wav --keywords "word1,word2" --strategy whisper --threshold 0.5
 
 # With classifier strategy and a trained model
-python -m cli.detect audio_file.wav --keywords "word1,word2" --strategy classifier --model models/my_model.pkl
+python -m cli.detect audio_file.wav --keywords "word1,word2" --strategy classifier --model models/my_model.pkl --threshold 0.6
 
 # Adjust confidence threshold
 python -m cli.detect audio_file.wav --keywords "word1,word2" --threshold 0.7
@@ -155,7 +158,7 @@ python -m cli.client health
 python -m cli.client strategies
 
 # Detect keywords using the API
-python -m cli.client detect audio_file.wav "word1,word2" --strategy whisper
+python -m cli.client detect audio_file.wav "word1,word2" --strategy whisper --threshold 0.5
 
 # Subscribe to detection results
 python -m cli.client subscribe keyword_detections
@@ -181,12 +184,22 @@ uvicorn api.app:app --host 0.0.0.0 --port 8000
 #### Example API Request
 
 ```bash
+# Basic detection request
 curl -X POST http://localhost:8000/keywords/detect \
   -F "file=@audio_file.wav" \
   -F "strategy=whisper" \
   -F "keywords=word1,word2" \
   -F "threshold=0.6" \
   -F "topic=my_custom_topic"
+
+# With metadata
+curl -X POST http://localhost:8000/keywords/detect \
+  -F "file=@audio_file.wav" \
+  -F "strategy=whisper" \
+  -F "keywords=word1,word2" \
+  -F "threshold=0.6" \
+  -F "topic=my_custom_topic" \
+  -F 'metadata={"timestamp":"2025-03-21T12:00:00Z","framerate":30,"source":"camera1","output_path":"/storage/results/"}'
 ```
 
 #### Example API Response
@@ -214,8 +227,53 @@ curl -X POST http://localhost:8000/keywords/detect \
     }
   ],
   "duration_seconds": 3.45,
-  "processing_time_seconds": 1.23
+  "processing_time_seconds": 1.23,
+  "metadata": {
+    "timestamp": "2025-03-21T12:00:00Z",
+    "framerate": 30,
+    "source": "camera1",
+    "output_path": "/storage/results/"
+  }
 }
+```
+
+#### Testing the Metadata Feature
+
+You can test the metadata feature with the following command:
+
+```bash
+# Using curl
+curl -X POST http://localhost:8000/keywords/detect \
+  -F "file=@audio_file.wav" \
+  -F "strategy=whisper" \
+  -F "keywords=hello,world" \
+  -F "threshold=0.5" \
+  -F 'metadata={"timestamp":"2025-03-21T12:00:00Z","framerate":30,"custom_field":"any value"}'
+
+# Using Python requests
+python -c "
+import requests
+import json
+
+url = 'http://localhost:8000/keywords/detect'
+files = {'file': open('audio_file.wav', 'rb')}
+metadata = {
+    'timestamp': '2025-03-21T12:00:00Z',
+    'framerate': 30,
+    'source': 'camera1',
+    'output_path': '/storage/results/'
+}
+
+data = {
+    'strategy': 'whisper',
+    'keywords': 'hello,world',
+    'threshold': '0.5',
+    'metadata': json.dumps(metadata)
+}
+
+response = requests.post(url, files=files, data=data)
+print(json.dumps(response.json(), indent=2))
+"
 ```
 
 ### Docker Deployment
@@ -342,6 +400,17 @@ The system supports multiple message queue strategies:
 - **Redis**: In-memory data structure store, useful for high-throughput scenarios
 - **Logging**: Fallback strategy that logs messages without external dependencies
 
+### Metadata Support
+
+The system supports passing arbitrary metadata along with detection requests. This metadata flows through the API and is included in both API responses and queue messages. Metadata can be used for:
+
+- Tracking source information (timestamps, recording device, etc.)
+- Specifying output preferences (file paths, formats)
+- Adding custom application-specific data
+- Linking related requests or processing steps
+
+Metadata is passed as a JSON string in API requests and is available as a JSON object in responses.
+
 ### Configuration Options
 
 Configuration can be set using environment variables:
@@ -357,6 +426,14 @@ Configuration can be set using environment variables:
 | `MQTT_BROKER_URL` | MQTT broker URL | localhost |
 | `MQTT_PORT` | MQTT broker port | 1883 |
 | `REDIS_URL` | Redis URL | redis://redis:6379/0 |
+
+**Important note on threshold values:**
+- Always set a detection confidence threshold appropriate for your use case
+- For Whisper strategy: values closer to 0.5 are often sufficient (default)
+- For Classifier strategy: higher values (0.6-0.8) may be needed for better precision
+- Lower thresholds increase recall but may produce more false positives
+- Higher thresholds increase precision but may miss some occurrences
+- Test and tune the threshold for your specific audio and keywords
 
 See `config/settings.py` for a complete list of options.
 

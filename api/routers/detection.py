@@ -5,6 +5,7 @@ Router for keyword detection endpoints
 import os
 import time
 import uuid
+import json
 import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks, Depends
@@ -49,6 +50,7 @@ async def detect_keywords(
     threshold: float = Form(0.5),
     model: Optional[str] = Form(None),
     topic: Optional[str] = Form("keyword_detections"),
+    metadata: Optional[str] = Form(None),  # JSON string of metadata
     queue_manager: QueueManager = Depends(get_queue_manager)
 ):
     """
@@ -56,6 +58,15 @@ async def detect_keywords(
     """
     start_time = time.time()
     job_id = str(uuid.uuid4())
+    
+    # Parse metadata from JSON string if provided
+    metadata_dict = None
+    if metadata:
+        try:
+            metadata_dict = json.loads(metadata)
+            logger.info(f"Received metadata: {metadata_dict}")
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid metadata format. Must be valid JSON.")
     
     try:
         # Parse keywords from comma-separated string
@@ -118,7 +129,8 @@ async def detect_keywords(
             "transcription": result.get("transcription"),
             "detections": detections,
             "duration_seconds": duration_seconds,
-            "processing_time_seconds": processing_time
+            "processing_time_seconds": processing_time,
+            "metadata": metadata_dict  # Add metadata to response
         }
 
         # Convert to JSON-serializable format
@@ -129,6 +141,7 @@ async def detect_keywords(
             **serializable_response,
             "filename": file.filename,
             "timestamp": time.time()
+            # Metadata is already included from serializable_response
         }
         queue_manager.publish(topic, queue_data)
         
@@ -142,6 +155,7 @@ async def detect_keywords(
             "success": False,
             "error": str(e),
             "job_id": job_id,
+            "metadata": metadata_dict,  # Include metadata in error response
             "timestamp": time.time()
         }
         queue_manager.publish(topic, error_data)

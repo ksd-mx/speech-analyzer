@@ -16,6 +16,7 @@ class KeywordDetectionRequest(KeywordDetectionBase):
     strategy: str = Field("whisper", description="Detection strategy: whisper or classifier")
     model: Optional[str] = Field(None, description="Model name for classifier strategy")
     topic: Optional[str] = Field("keyword_detections", description="Queue topic for results")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Custom metadata to track with the request")
 
 # Response Models
 class KeywordOccurrence(BaseModel):
@@ -30,7 +31,6 @@ class KeywordDetectionResult(BaseModel):
     occurrences: int = Field(0, description="Number of occurrences")
     positions: List[int] = Field([], description="Positions in audio/text")
     confidence_scores: List[float] = Field([], description="Confidence scores for each occurrence")
-
 class KeywordDetectionResponse(BaseModel):
     """Response model for keyword detection"""
     success: bool = Field(..., description="Whether the request was successful")
@@ -39,6 +39,8 @@ class KeywordDetectionResponse(BaseModel):
     transcription: Optional[str] = Field(None, description="Full transcription (for whisper strategy)")
     detections: List[KeywordDetectionResult] = Field(..., description="Detection results for each keyword")
     duration_seconds: float = Field(..., description="Duration of the audio file")
+    processing_time_seconds: float = Field(..., description="Time taken to process the request")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Custom metadata passed with the request")
     processing_time_seconds: float = Field(..., description="Time taken to process the request")
 
 # Health Check Response
