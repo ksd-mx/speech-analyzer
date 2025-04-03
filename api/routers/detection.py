@@ -91,10 +91,24 @@ async def detect_keywords(
         background_tasks.add_task(lambda: os.remove(file_path) if os.path.exists(file_path) else None)
         
         # Create detector based on strategy
-        detector = DetectorFactory.create_detector(
-            strategy=strategy,
-            model_path=model
-        )
+        if strategy == "whisper":
+            # Use model_size from settings for Whisper
+            detector = DetectorFactory.create_detector(
+                strategy=strategy,
+                model_size=settings.WHISPER_MODEL  # Use from settings instead of hardcoding
+            )
+        elif strategy == "vosk":
+            # Use model_path from settings or provided model for VOSK
+            detector = DetectorFactory.create_detector(
+                strategy=strategy,
+                model_path=model or settings.VOSK_MODEL_PATH,
+                sample_rate=settings.VOSK_SAMPLE_RATE  # Also pass sample_rate
+            )
+        else:  # classifier
+            detector = DetectorFactory.create_detector(
+                strategy=strategy,
+                model_path=model
+            )
         
         # Detect keywords
         logger.info(f"Detecting keywords {keyword_list} using {strategy} strategy")
@@ -171,6 +185,10 @@ async def list_strategies():
         "whisper": {
             "description": "Uses Whisper speech-to-text for keyword detection",
             "models": ["tiny", "base", "small", "medium", "large"]
+        },
+        "vosk": {
+            "description": "Uses VOSK speech-to-text for keyword detection (offline, supports Arabic)",
+            "models": ["vosk-model-ar-0.22", "vosk-model-small-en-us-0.22"]
         },
         "classifier": {
             "description": "Uses a trained classifier for direct audio keyword detection",

@@ -23,6 +23,10 @@ class Settings:
     WHISPER_MODEL: str = os.environ.get("WHISPER_MODEL", "base")
     CACHE_MODELS: bool = os.environ.get("CACHE_MODELS", "true").lower() == "true"
     
+    # VOSK Settings
+    VOSK_MODEL_PATH: str = os.environ.get("VOSK_MODEL_PATH", "models/vosk-model-ar-0.22")
+    VOSK_SAMPLE_RATE: int = int(os.environ.get("VOSK_SAMPLE_RATE", "16000"))
+    
     # Classifier Settings
     DEFAULT_MODEL_DIR: str = os.environ.get("DEFAULT_MODEL_DIR", "models")
     DEFAULT_THRESHOLD: float = float(os.environ.get("DEFAULT_THRESHOLD", "0.5"))
@@ -74,6 +78,11 @@ class Settings:
         if strategy == "whisper":
             return {
                 "model_size": cls.WHISPER_MODEL
+            }
+        elif strategy == "vosk":
+            return {
+                "model_path": cls.VOSK_MODEL_PATH,
+                "sample_rate": cls.VOSK_SAMPLE_RATE
             }
         elif strategy == "classifier":
             return {
