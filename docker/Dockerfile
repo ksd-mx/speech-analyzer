@@ -35,9 +35,9 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /app/models && \
     wget --no-check-certificate https://alphacephei.com/vosk/models/vosk-model-ar-mgb2-0.4.zip -O /tmp/vosk-arabic.zip && \
     unzip /tmp/vosk-arabic.zip -d /app/models/ && \
-    mv /app/models/vosk-model-ar-mgb2-0.4 /app/models/vosk-arabic \
+    mv /app/models/vosk-model-ar-mgb2-0.4 /app/models/vosk-model-ar-0.22 && \
     rm /tmp/vosk-arabic.zip
-    
+
 # Copy only the requirements first
 COPY requirements.txt .
 
@@ -56,7 +56,7 @@ COPY . /app/
 
 # Environment variables
 ENV WHISPER_MODEL=small
-ENV VOSK_MODEL_PATH=/app/models/vosk-arabic
+ENV VOSK_MODEL_PATH=/app/models/vosk-model-ar-0.22
 ENV VOSK_SAMPLE_RATE=16000
 ENV UPLOAD_DIR=/tmp/audio_uploads
 ENV QUEUE_TYPE=mqtt

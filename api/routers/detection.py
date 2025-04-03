@@ -24,6 +24,9 @@ from core.detector_factory import DetectorFactory
 # Import queue manager
 from queueing.queue_manager import QueueManager
 
+# Import settings
+from config.settings import settings
+
 # Configure logging
 logger = logging.getLogger(__name__)
 

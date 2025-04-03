@@ -192,6 +192,15 @@ curl -X POST http://localhost:8000/keywords/detect \
   -F "threshold=0.6" \
   -F "topic=my_custom_topic"
 
+# VOSK detection for Arabic
+curl -X POST http://localhost:8000/keywords/detect \
+  -F "file=@arabic_file.wav" \
+  -F "strategy=vosk" \
+  -F "keywords=جهاد,كفار" \
+  -F "model=vosk-model-ar-0.22" \
+  -F "threshold=0.5" \
+  -F "topic=arabic_detections"
+
 # With metadata
 curl -X POST http://localhost:8000/keywords/detect \
   -F "file=@audio_file.wav" \
@@ -316,6 +325,11 @@ classDiagram
         +get_supported_params()
     }
     
+    class VoskDetector {
+        +detect_keywords()
+        +get_supported_params()
+    }
+    
     class ClassifierDetector {
         +detect_keywords()
         +get_supported_params()
@@ -323,6 +337,7 @@ classDiagram
     
     DetectorFactory ..> BaseDetector : creates
     BaseDetector <|-- WhisperDetector : implements
+    BaseDetector <|-- VoskDetector : implements
     BaseDetector <|-- ClassifierDetector : implements
 ```
 
@@ -365,6 +380,21 @@ audio-detection-system/
 ## Reference
 
 ### Detection Strategies
+
+#### VOSK Strategy
+
+Uses the VOSK offline speech recognition toolkit for transcription and keyword detection. Advantages:
+- Works completely offline (no internet required)
+- Supports Arabic and multiple other languages
+- Faster than Whisper for short utterances
+- Lower memory requirements
+- Suitable for embedded systems and edge devices
+
+Implementation is provided in `core/detection/vosk_detector.py`.
+
+Available models:
+- `vosk-model-ar-0.22` (Arabic)
+- `vosk-model-small-en-us-0.22` (English)
 
 #### Whisper Strategy
 
@@ -420,6 +450,8 @@ Configuration can be set using environment variables:
 | `API_HOST` | API host | 0.0.0.0 |
 | `API_PORT` | API port | 8000 |
 | `WHISPER_MODEL` | Whisper model size | base |
+| `VOSK_MODEL_PATH` | Path to VOSK model directory | models/vosk-model-ar-0.22 |
+| `VOSK_SAMPLE_RATE` | Audio sample rate for VOSK | 16000 |
 | `DEFAULT_MODEL_DIR` | Classifier models directory | models |
 | `DEFAULT_THRESHOLD` | Default detection threshold | 0.5 |
 | `QUEUE_TYPE` | Queue strategy (mqtt, redis, logging) | mqtt |
@@ -430,6 +462,7 @@ Configuration can be set using environment variables:
 **Important note on threshold values:**
 - Always set a detection confidence threshold appropriate for your use case
 - For Whisper strategy: values closer to 0.5 are often sufficient (default)
+- For VOSK strategy: the threshold has less impact as it uses exact text matching
 - For Classifier strategy: higher values (0.6-0.8) may be needed for better precision
 - Lower thresholds increase recall but may produce more false positives
 - Higher thresholds increase precision but may miss some occurrences

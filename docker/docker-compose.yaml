@@ -25,7 +25,7 @@ services:
       - WHISPER_MODEL=small
       - UPLOAD_DIR=/tmp/audio_uploads
       # VOSK configuration
-      - VOSK_MODEL_PATH=/app/models/vosk-arabic
+      - VOSK_MODEL_PATH=/app/models/vosk-model-ar-0.22
       - VOSK_SAMPLE_RATE=16000
       # Queue configuration
       - QUEUE_TYPE=mqtt
