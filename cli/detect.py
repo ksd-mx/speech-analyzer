@@ -53,7 +53,8 @@ def detect_keywords_standalone(
         # Create detector based on strategy
         detector = DetectorFactory.create_detector(
             strategy=strategy,
-            model_path=model_path
+            model_path=model_path,
+            model_size="small"
         )
         
         # Display info about detection
@@ -109,8 +110,8 @@ def main():
     parser = argparse.ArgumentParser(description="Detect keywords in audio files")
     parser.add_argument('audio_file', help="Audio file to analyze")
     parser.add_argument('--keywords', required=True, help="Comma-separated list of keywords to detect")
-    parser.add_argument('--strategy', default="whisper", choices=["whisper", "classifier"],
-                      help="Detection strategy (whisper or classifier)")
+    parser.add_argument('--strategy', default="whisper", choices=["whisper", "vosk", "classifier"],
+                      help="Detection strategy (whisper, vosk, or classifier)")
     parser.add_argument('--model', help="Path to model file (for classifier strategy)")
     parser.add_argument('--threshold', type=float, default=0.5, 
                        help="Confidence threshold (0.0-1.0, default: 0.5)")

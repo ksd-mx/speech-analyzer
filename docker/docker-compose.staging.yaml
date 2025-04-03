@@ -1,0 +1,45 @@
+services:
+  audio-detection-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        - http_proxy=${http_proxy:-}
+        - https_proxy=${https_proxy:-}
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - audio-uploads:/tmp/audio_uploads
+      - ../models:/app/models
+    networks:
+      - audio-detection-network
+    environment:
+      # Proxy settings
+      - http_proxy=${http_proxy:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      # Whisper configuration
+      - WHISPER_MODEL=small
+      - UPLOAD_DIR=/tmp/audio_uploads
+      # Queue configuration
+      - QUEUE_TYPE=mqtt
+      - QUEUE_ENABLED=true
+      # MQTT settings (used when QUEUE_TYPE=mqtt)
+      - MQTT_BROKER_URL=10.144.56.19
+      - MQTT_PORT=1883
+      - MQTT_CLIENT_ID=853pe6ijju2lmu2o4r28
+      - MQTT_USERNAME=qtxb1bviod0unabwp157
+      - MQTT_PASSWORD=5d7dqjqcgvh22zhq1ucv
+      - MQTT_QOS=0
+      - MQTT_RETAIN=false
+    restart: unless-stopped
+
+volumes:
+  audio-uploads:
+
+networks:
+  audio-analyzer:
+    external: true
